@@ -520,6 +520,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 <div class="notif" id="notif"></div>
 <div class="confetti-wrap" id="confetti-wrap"></div>
 
+<!-- LOADING -->
+<div id="loading-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:500;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="font-family:'Playfair Display',serif;font-size:22px;color:var(--accent);">Λεξιλόγιο</div>
+  <div style="display:flex;gap:6px;">
+    <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite;"></div>
+    <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out 0.2s infinite;"></div>
+    <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out 0.4s infinite;"></div>
+  </div>
+  <div style="font-size:12px;color:var(--text3);">Kelimeler yükleniyor...</div>
+</div>
+<style>
+@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
+</style>
+
 <script>
 const STORE='yds_v5';
 const INTERVALS=[1,2,4,7,14,30];
@@ -546,16 +560,49 @@ let R={active:false,queue:[],idx:0,answered:false};
 // Monthly
 let M={active:false,queue:[],idx:0,answered:false};
 
-function load(){
+const WORDS_URL='/yunanca-kelime/yds-yunanca-kelimeler.json';
+
+async function load(){
+  // 1. Önce localStorage'daki ilerlemeyi yükle
   try{const r=localStorage.getItem(STORE);if(r)S=JSON.parse(r);}catch(e){}
-  if(!S.settings)S.settings={deckSize:15,fuzzy:1};
+  if(!S.settings)S.settings={deckSize:10,fuzzy:1};
   if(!S.stats)S.stats={streak:0,lastDate:null,totalReviews:0,dailyLog:{}};
   if(!S.stats.dailyLog)S.stats.dailyLog={};
   if(!S.monthly)S.monthly={last:null};
   if(!S.decks)S.decks=[];
   document.getElementById('set-ds').value=S.settings.deckSize;
   document.getElementById('set-fz').value=S.settings.fuzzy;
+
+  // 2. Kelimeler zaten yüklüyse fetch etme
+  if(S.words&&S.words.length>0) return;
+
+  // 3. JSON'dan kelimeleri çek
+  try{
+    showLoadingScreen(true);
+    const res=await fetch(WORDS_URL);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json();
+
+    // Sadece words ve decks al, istatistikleri koru
+    S.words=data.words||[];
+    S.decks=data.decks||[];
+    if(!S.settings.deckSize) S.settings=data.settings||{deckSize:10,fuzzy:1};
+    persist();
+    notify('500 kelime yüklendi ✓');
+  }catch(err){
+    console.error('Kelime listesi yüklenemedi:',err);
+    notify('Kelime listesi yüklenemedi. İçe Aktar ile manuel yükleyebilirsin.');
+  } finally {
+    showLoadingScreen(false);
+  }
 }
+
+function showLoadingScreen(show){
+  let el=document.getElementById('loading-screen');
+  if(!el) return;
+  el.style.display=show?'flex':'none';
+}
+
 function persist(){localStorage.setItem(STORE,JSON.stringify(S));}
 function saveSetting(k,v){S.settings[k]=parseInt(v);persist();notify('Kaydedildi');}
 
@@ -1313,7 +1360,7 @@ function renderCalendar(){
 }
 
 // ── INIT ──────────────────────────────────────────────────
-load();updateHeader();updateStreak();startSession();
+load().then(()=>{updateHeader();updateStreak();startSession();});
 </script>
 
 <script>
