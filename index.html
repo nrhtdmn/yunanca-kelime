@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -5,6 +6,64 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YDS Kelime - Yunanca</title>
 <link rel="manifest" href="manifest.json">
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import{getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getFirestore,doc,setDoc,getDoc}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+const FB_CFG={apiKey:"AIzaSyBD0BwWNj1ypc2oMk_ZndkwlqUsimC8Y4E",authDomain:"yunancaokuyucu.firebaseapp.com",projectId:"yunancaokuyucu",storageBucket:"yunancaokuyucu.firebasestorage.app",messagingSenderId:"434539375134",appId:"1:434539375134:web:2538e78f0d15489c26dc0f"};
+const fbApp=initializeApp(FB_CFG);
+const auth=getAuth(fbApp);
+const db=getFirestore(fbApp);
+const provider=new GoogleAuthProvider();
+let currentUser=null,syncTO=null;
+onAuthStateChanged(auth,async user=>{
+  currentUser=user;
+  updateAuthUI(user);
+  if(user){await pullProgress();}
+});
+function updateAuthUI(user){
+  const btn=document.getElementById('auth-btn');
+  const av=document.getElementById('auth-avatar');
+  if(!btn)return;
+  if(user){
+    btn.textContent='Çıkış';btn.onclick=()=>signOut(auth);
+    av.style.display='flex';av.textContent=user.displayName?user.displayName[0].toUpperCase():'?';
+    av.title=user.email;
+  }else{
+    btn.textContent='Giriş';btn.onclick=()=>signInWithPopup(auth,provider).catch(console.error);
+    av.style.display='none';
+  }
+}
+async function pullProgress(){
+  if(!currentUser)return;
+  try{
+    const snap=await getDoc(doc(db,'users',currentUser.uid,'data','progress'));
+    if(!snap.exists())return;
+    const remote=snap.data();
+    const local=JSON.parse(localStorage.getItem('yds_v5')||'{}');
+    const lr=(local.stats?.totalReviews)||0;
+    const rr=(remote.stats?.totalReviews)||0;
+    if(rr>lr){
+      localStorage.setItem('yds_v5',JSON.stringify(remote));
+      if(window._appReady){location.reload();}
+    }
+    document.getElementById('sync-dot').style.background='var(--green)';
+  }catch(e){console.error('pull:',e);}
+}
+window.pushProgress=function(){
+  if(!currentUser)return;
+  clearTimeout(syncTO);
+  syncTO=setTimeout(async()=>{
+    try{
+      const data=JSON.parse(localStorage.getItem('yds_v5')||'{}');
+      await setDoc(doc(db,'users',currentUser.uid,'data','progress'),data);
+      const dot=document.getElementById('sync-dot');
+      dot.style.background='var(--green)';
+      setTimeout(()=>dot.style.background='var(--text3)',2000);
+    }catch(e){console.error('push:',e);}
+  },2000);
+};
+</script>
 <meta name="theme-color" content="#c9a96e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -264,6 +323,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <div class="sp">Toplam: <strong id="h-total">0</strong></div>
     <div class="sp">Kalıcı: <strong id="h-perm">0</strong></div>
     <div class="sbadge" id="streak-badge">🔥 0 gün</div>
+    <div id="auth-avatar" style="display:none;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#1a1408;font-size:12px;font-weight:600;align-items:center;justify-content:center;cursor:default;"></div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div id="sync-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);transition:background 0.3s;" title="Sync durumu"></div>
+      <button id="auth-btn" onclick="document.getElementById('auth-btn').textContent='...'" style="background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:11px;font-family:'DM Sans',sans-serif;padding:4px 10px;cursor:pointer;white-space:nowrap;">Giriş</button>
+    </div>
   </div>
 </div>
 <div class="pw"><div class="pt"><div class="pf" id="prog-fill" style="width:0%"></div></div><div class="pl" id="prog-label"></div></div>
@@ -603,7 +667,10 @@ function showLoadingScreen(show){
   el.style.display=show?'flex':'none';
 }
 
-function persist(){localStorage.setItem(STORE,JSON.stringify(S));}
+function persist(){
+  localStorage.setItem(STORE,JSON.stringify(S));
+  if(window.pushProgress) window.pushProgress();
+}
 function saveSetting(k,v){S.settings[k]=parseInt(v);persist();notify('Kaydedildi');}
 
 function today(){return new Date().toISOString().slice(0,10);}
@@ -1360,7 +1427,7 @@ function renderCalendar(){
 }
 
 // ── INIT ──────────────────────────────────────────────────
-load().then(()=>{updateHeader();updateStreak();startSession();});
+load().then(()=>{updateHeader();updateStreak();startSession();window._appReady=true;});
 </script>
 
 <script>
